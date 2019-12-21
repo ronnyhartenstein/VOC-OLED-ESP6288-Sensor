@@ -1,5 +1,7 @@
 # Arduino: VOC Sensor
 
+![Breadboard Prototype](breadboard.jpg)
+
 ## Parts
 
 ### CCS811 VOC-Sensor
