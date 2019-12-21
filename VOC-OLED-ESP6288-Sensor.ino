@@ -15,11 +15,15 @@ Adafruit_CCS811 ccs;
 
 // Display Logik Steuerung
 
+int y[DISPLAY_BREITE];
 int x = 0;
-int y = 0;
+int y_curr = 0;
 
 int y_delta = 0;
 float y_float = 0.0;
+
+int eCO2_curr = 0;
+int TVOC_curr = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -56,16 +60,14 @@ void loop() {
     while (1);
   }
 
-  co2();
-  tvoc();
+  lese_co2();
+  lese_tvoc();
+  lese_temp();
 
-  display_x_erhoehen();
+  display_rendern();
   
-  // ungefähre Temperatur
-  float temp = ccs.calculateTemperature();
-  Serial.print(" ppb   Temp:");
-  Serial.println(temp);
-
+  x_erhoehen();
+ 
   delay(500);
 }
 
@@ -74,41 +76,71 @@ void loop() {
  * 400 ppm -> y 0 
  * 1000 ppm -> y 63 (Max)
  */
-void co2()
+void lese_co2()
 {
-  // 
   Serial.print("eCO2: ");
   float eCO2 = ccs.geteCO2();
+  eCO2_curr = abs(eCO2);
   Serial.print(eCO2);
-  y_delta = abs(eCO2) - 400;
-  y_float = (float) y_delta / 600.0;
-  y = abs(y_float * (DISPLAY_HOEHE - 1)) % (DISPLAY_HOEHE - 1);
-  
-  display.draw_pixel(x, y);
-  
-  display.setCursor(0, 50);
-  display.print("CO2: " + (String) eCO2 + " ppm");
-  
-  display.display();
-  
+  int y_delta = abs(eCO2) - 400;
+  float y_float = (float) y_delta / 600.0;
+  int y_curr = abs(y_float * (DISPLAY_HOEHE - 1));
+  if (y_curr > (DISPLAY_HOEHE - 1)) {
+    y_curr = DISPLAY_HOEHE - 1;
+  }
+  y[x] = y_curr;  
 }
 
 /**
  * TVOC -  Total Volatile Organic Compounds  - Gesamt flüchtige organische Verbindungen
  */
-void tvoc()
+void lese_tvoc()
 {
   Serial.print(" ppm, TVOC: ");
   float TVOC = ccs.getTVOC();
+  TVOC_curr = abs(TVOC);
   Serial.print(TVOC);
 }
 
+/**
+ * ungefähre Temperatur
+ */
+void lese_temp()
+{
+  float temp = ccs.calculateTemperature();
+  Serial.print(" ppb   Temp:");
+  Serial.println(temp);
+}
 
-void display_x_erhoehen()
+
+void x_erhoehen()
 {
   x++;
   if (x == 128) {
-    display.clear();
     x = 0;
   }
+}
+
+/**
+ * Gesammelte Werte auf OLED Display darstellen
+ * Screen komplett neu aufbauen
+ */
+void display_rendern() 
+{
+  display.clear();
+
+  // Kurve malen
+  int tmp_x = 0;
+  while (tmp_x < 128) {
+    // invers
+    display.draw_pixel(tmp_x, 63 - y[tmp_x]);
+    tmp_x++;
+  }
+
+  // Werte ausschreiben
+  display.setCursor(1, 1);
+  display.print("CO2: " + (String) eCO2_curr + " ppm");
+  
+  display.display();
+
 }
