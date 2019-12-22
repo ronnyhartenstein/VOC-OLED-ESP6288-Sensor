@@ -4,11 +4,15 @@
 #include <oled.h>
 #include <ESP8266WiFi.h>
 
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
 #include "Adafruit_CCS811.h"
 #include "Secrets.h"
 
 
-// SH1106
+// --------- OLED Display SH1106
+
 const int DISPLAY_BREITE = 128;
 const int DISPLAY_HOEHE = 64;
 
@@ -16,7 +20,7 @@ OLED display = OLED(D4, D3, NO_RESET_PIN, 0x3C, DISPLAY_BREITE, DISPLAY_HOEHE, t
 
 Adafruit_CCS811 ccs;
 
-// Display Logik Steuerung
+// --------- Display Render Steuerung
 
 int y[DISPLAY_BREITE];
 int x = 0;
@@ -27,6 +31,21 @@ float y_float = 0.0;
 
 int eCO2_curr = 0;
 int TVOC_curr = 0;
+
+int loop_nr = 0;
+
+// -------- MQTT -------
+
+WiFiClient client;
+
+Adafruit_MQTT_Client mqtt(&client, MQTT_SERVER, MQTT_PORT, MQTT_USER, MQTT_KEY);
+
+Adafruit_MQTT_Publish pub_eco2 = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/eco2");
+Adafruit_MQTT_Publish pub_tvoc = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/tvoc");
+Adafruit_MQTT_Publish pub_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/temp");
+
+
+// ---------- SETUP --------
 
 void setup() {
   Serial.begin(115200);
@@ -62,10 +81,10 @@ void setup_display() {
 
 void setup_wifi() {
   Serial.print("Verbinde mit WiFi SSID ");
-  Serial.println(ssid);
+  Serial.println(WLAN_SSID);
   
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(WLAN_SSID, WLAN_PASSWORD);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -76,8 +95,11 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+// --------- LOOP ---------
 
 void loop() {
+  MQTT_connect();
+  
   if (!ccs.available()) {
     delay(500);
     return;
@@ -96,7 +118,19 @@ void loop() {
 
   x_erhoehen();
 
-  delay(500);
+  // erste Minute alle 0,5 Sek messen
+  if (loop_nr < 120) {
+    delay(500);
+  } 
+  // zweite Minute alle 10 Sek messen
+  else if (loop_nr < 120 + 6) {
+    delay(10000);
+  }
+  // dann alle 30 Sek
+  else {
+    delay(30000);
+  }
+  loop_nr++;
 }
 
 /**
@@ -117,6 +151,15 @@ void lese_co2()
     y_curr = DISPLAY_HOEHE - 1;
   }
   y[x] = y_curr;
+
+  Serial.print(F("\nPublish "));
+  Serial.print("...");
+  if (! pub_eco2.publish(eCO2_curr)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+
 }
 
 /**
@@ -128,6 +171,14 @@ void lese_tvoc()
   float TVOC = ccs.getTVOC();
   TVOC_curr = abs(TVOC);
   Serial.print(TVOC);
+
+  Serial.print(F("\nPublish "));
+  Serial.print("...");
+  if (! pub_tvoc.publish(TVOC_curr)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
 }
 
 /**
@@ -138,6 +189,14 @@ void lese_temp()
   float temp = ccs.calculateTemperature();
   Serial.print(" ppb   Temp:");
   Serial.println(temp);
+
+  Serial.print(F("\nPublish "));
+  Serial.print("...");
+  if (! pub_temp.publish(temp)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
 }
 
 
@@ -171,4 +230,29 @@ void display_rendern()
 
   display.display();
 
+}
+
+
+void MQTT_connect() {
+  int8_t ret;
+
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Retrying MQTT connection in 5 seconds...");
+       mqtt.disconnect();
+       delay(5000);
+       retries--;
+       if (retries == 0) {
+         // basically die and wait for WDT to reset me
+         while (1);
+       }
+  }
+  Serial.println("MQTT Connected!");
 }
