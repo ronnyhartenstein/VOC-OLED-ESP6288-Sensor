@@ -2,8 +2,11 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <oled.h>
+#include <ESP8266WiFi.h>
 
 #include "Adafruit_CCS811.h"
+#include "Secrets.h"
+
 
 // SH1106
 const int DISPLAY_BREITE = 128;
@@ -27,7 +30,14 @@ int TVOC_curr = 0;
 
 void setup() {
   Serial.begin(115200);
+  delay(10);
 
+  setup_voc();
+  setup_display();
+  setup_wifi();
+}
+
+void setup_voc() {
   Serial.println("Starte VOC");
   if (!ccs.begin()) {
     Serial.println("Failed to start sensor! Please check your wiring.");
@@ -41,11 +51,29 @@ void setup() {
   Serial.println("Temperatur prüfen");
   float temp = ccs.calculateTemperature();
   ccs.setTempOffset(temp - 25.0);
+}
 
+void setup_display() {
   Serial.println("Starte Display");
   display.begin();
   // hinterhertreten, CCS811 arbeitet mit I2C clock stretching
   Wire.setClockStretchLimit(500);
+}
+
+void setup_wifi() {
+  Serial.print("Verbinde mit WiFi SSID ");
+  Serial.println(ssid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 
@@ -65,17 +93,17 @@ void loop() {
   lese_temp();
 
   display_rendern();
-  
+
   x_erhoehen();
- 
+
   delay(500);
 }
 
 /**
- * CO2
- * 400 ppm -> y 0 
- * 1000 ppm -> y 63 (Max)
- */
+   CO2
+   400 ppm -> y 0
+   1000 ppm -> y 63 (Max)
+*/
 void lese_co2()
 {
   Serial.print("eCO2: ");
@@ -88,12 +116,12 @@ void lese_co2()
   if (y_curr > (DISPLAY_HOEHE - 1)) {
     y_curr = DISPLAY_HOEHE - 1;
   }
-  y[x] = y_curr;  
+  y[x] = y_curr;
 }
 
 /**
- * TVOC -  Total Volatile Organic Compounds  - Gesamt flüchtige organische Verbindungen
- */
+   TVOC -  Total Volatile Organic Compounds  - Gesamt flüchtige organische Verbindungen
+*/
 void lese_tvoc()
 {
   Serial.print(" ppm, TVOC: ");
@@ -103,8 +131,8 @@ void lese_tvoc()
 }
 
 /**
- * ungefähre Temperatur
- */
+   ungefähre Temperatur
+*/
 void lese_temp()
 {
   float temp = ccs.calculateTemperature();
@@ -122,10 +150,10 @@ void x_erhoehen()
 }
 
 /**
- * Gesammelte Werte auf OLED Display darstellen
- * Screen komplett neu aufbauen
- */
-void display_rendern() 
+   Gesammelte Werte auf OLED Display darstellen
+   Screen komplett neu aufbauen
+*/
+void display_rendern()
 {
   display.clear();
 
@@ -140,7 +168,7 @@ void display_rendern()
   // Werte ausschreiben
   display.setCursor(1, 1);
   display.print("CO2: " + (String) eCO2_curr + " ppm");
-  
+
   display.display();
 
 }
