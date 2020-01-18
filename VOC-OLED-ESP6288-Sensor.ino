@@ -11,14 +11,17 @@
 #include "Secrets.h"
 
 
+// ---------- VOC Sensor CCS811
+
+Adafruit_CCS811 ccs;
+
+
 // --------- OLED Display SH1106
 
 const int DISPLAY_BREITE = 128;
 const int DISPLAY_HOEHE = 64;
-
+                  // SDA, SCL, Reset PIN, I2C addr, width, height, isSH1106)
 OLED display = OLED(D4, D3, NO_RESET_PIN, 0x3C, DISPLAY_BREITE, DISPLAY_HOEHE, true);
-
-Adafruit_CCS811 ccs;
 
 // --------- Display Render Steuerung
 
