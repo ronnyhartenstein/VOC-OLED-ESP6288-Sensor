@@ -4,24 +4,39 @@
 #include <oled.h>
 #include <ESP8266WiFi.h>
 
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
+#include <Adafruit_MQTT.h>
+#include <Adafruit_MQTT_Client.h>
 
-#include "Adafruit_CCS811.h"
+#include <Adafruit_CCS811.h>
+
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
 #include "Secrets.h"
 
 
-// ---------- VOC Sensor CCS811
+// --------- VOC Sensor CCS811
 
 Adafruit_CCS811 ccs;
+
+// --------- Barometer BME280
+
+#define I2C_SDA D4
+#define I2C_SCL D3
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+TwoWire I2CBME = TwoWire();
+Adafruit_BME280 bme;
 
 
 // --------- OLED Display SH1106
 
 const int DISPLAY_BREITE = 128;
 const int DISPLAY_HOEHE = 64;
+
                   // SDA, SCL, Reset PIN, I2C addr, width, height, isSH1106)
-OLED display = OLED(D4, D3, NO_RESET_PIN, 0x3C, DISPLAY_BREITE, DISPLAY_HOEHE, true);
+OLED display = OLED(I2C_SDA, I2C_SCL, NO_RESET_PIN, 0x3C, DISPLAY_BREITE, DISPLAY_HOEHE, true);
 
 // --------- Display Render Steuerung
 
@@ -43,9 +58,12 @@ WiFiClient client;
 
 Adafruit_MQTT_Client mqtt(&client, MQTT_SERVER, MQTT_PORT, MQTT_USER, MQTT_KEY);
 
-Adafruit_MQTT_Publish pub_eco2 = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/eco2");
-Adafruit_MQTT_Publish pub_tvoc = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/tvoc");
-Adafruit_MQTT_Publish pub_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/temp");
+Adafruit_MQTT_Publish pub_voc_eco2 = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/eco2");
+Adafruit_MQTT_Publish pub_voc_tvoc = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/tvoc");
+Adafruit_MQTT_Publish pub_voc_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/voc/temp");
+
+Adafruit_MQTT_Publish pub_baro_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/baro/temp");
+Adafruit_MQTT_Publish pub_baro_humi = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/baro/humi");
 
 
 // ---------- SETUP --------
@@ -54,15 +72,24 @@ void setup() {
   Serial.begin(115200);
   delay(10);
 
-  setup_voc();
-  setup_display();
+  setup_voc_ccs811();
+  //setup_baro_bme280();
+  setup_display_sh1106();
   setup_wifi();
 }
 
-void setup_voc() {
+void setup_baro_bme280() {
+  I2CBME.begin(I2C_SDA, I2C_SCL, 100000);
+  if (!bme.begin(0x76, &I2CBME)) {
+    Serial.println("Failed to start Barometer BME280!");
+    while (1);
+  }
+}
+
+void setup_voc_ccs811() {
   Serial.println("Starte VOC");
   if (!ccs.begin()) {
-    Serial.println("Failed to start sensor! Please check your wiring.");
+    Serial.println("Failed to start VOC Sensor CCS811!");
     while (1);
   }
 
@@ -75,7 +102,7 @@ void setup_voc() {
   ccs.setTempOffset(temp - 25.0);
 }
 
-void setup_display() {
+void setup_display_sh1106() {
   Serial.println("Starte Display");
   display.begin();
   // hinterhertreten, CCS811 arbeitet mit I2C clock stretching
@@ -113,9 +140,12 @@ void loop() {
     while (1);
   }
 
-  lese_co2();
-  lese_tvoc();
-  lese_temp();
+  //lese_baro_temp();
+  //lese_baro_humi();
+  
+  lese_voc_co2();
+  lese_voc_tvoc();
+  lese_voc_temp();
 
   display_rendern();
 
@@ -141,12 +171,14 @@ void loop() {
    400 ppm -> y 0
    1000 ppm -> y 63 (Max)
 */
-void lese_co2()
+void lese_voc_co2()
 {
-  Serial.print("eCO2: ");
   float eCO2 = ccs.geteCO2();
   eCO2_curr = abs(eCO2);
-  Serial.print(eCO2);
+
+  Serial.println("eCO2: " + String(eCO2_curr) + " ppm");
+  publish_mqtt(pub_voc_eco2, eCO2_curr);
+
   int y_delta = abs(eCO2) - 400;
   float y_float = (float) y_delta / 600.0;
   int y_curr = abs(y_float * (DISPLAY_HOEHE - 1));
@@ -155,47 +187,52 @@ void lese_co2()
   }
   y[x] = y_curr;
 
-  Serial.print(F("\nPublish "));
-  Serial.print("...");
-  if (! pub_eco2.publish(eCO2_curr)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
-  }
-
 }
 
 /**
    TVOC -  Total Volatile Organic Compounds  - Gesamt flüchtige organische Verbindungen
 */
-void lese_tvoc()
+void lese_voc_tvoc()
 {
-  Serial.print(" ppm, TVOC: ");
   float TVOC = ccs.getTVOC();
   TVOC_curr = abs(TVOC);
-  Serial.print(TVOC);
-
-  Serial.print(F("\nPublish "));
-  Serial.print("...");
-  if (! pub_tvoc.publish(TVOC_curr)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
-  }
+  
+  Serial.print(" ppm, TVOC: " + String(TVOC_curr)  + " ppb");
+  publish_mqtt(pub_voc_tvoc, TVOC);
 }
 
 /**
    ungefähre Temperatur
 */
-void lese_temp()
+void lese_voc_temp()
 {
   float temp = ccs.calculateTemperature();
-  Serial.print(" ppb   Temp:");
-  Serial.println(temp);
+  
+  Serial.println("Temp: " + String(temp) + " °C");
+  publish_mqtt(pub_voc_temp, temp);
+}
 
+void lese_baro_temp()
+{
+  float temp = bme.readTemperature();
+  
+  Serial.println(" BME   Temp: " + String(temp) + " °C");
+  publish_mqtt(pub_baro_temp, temp);
+}
+
+void lese_baro_humi()
+{
+  float humi = bme.readHumidity();
+  
+  Serial.println(" BME   Humi:" + String(humi) + " %");
+  publish_mqtt(pub_baro_humi, humi);
+}
+
+void publish_mqtt(Adafruit_MQTT_Publish pub, float val) 
+{
   Serial.print(F("\nPublish "));
   Serial.print("...");
-  if (! pub_temp.publish(temp)) {
+  if (! pub.publish(val)) {
     Serial.println(F("Failed"));
   } else {
     Serial.println(F("OK!"));
