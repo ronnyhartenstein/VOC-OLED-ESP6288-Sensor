@@ -21,16 +21,6 @@
 
 Adafruit_CCS811 ccs;
 
-// --------- Barometer BME280
-
-#define I2C_SDA D4
-#define I2C_SCL D3
-
-#define SEALEVELPRESSURE_HPA (1013.25)
-
-TwoWire I2CBME = TwoWire();
-Adafruit_BME280 bme;
-
 // --------- Temperatur/Luftfeuchte DHD22
 
 #define DHT22PIN D7
@@ -82,23 +72,12 @@ void setup() {
 
   setup_voc_ccs811();
   delay(100);
-  //setup_baro_bme280();
-  delay(100);
   setup_temp_dht22();
   delay(100);
   setup_display_sh1106();
   delay(100);
   setup_wifi();
   delay(100);
-}
-
-void setup_baro_bme280() {
-  Serial.println("Starte Barometer");
-  I2CBME.begin(I2C_SDA, I2C_SCL, 100000);
-  if (!bme.begin(0x76, &I2CBME)) {
-    Serial.println("Failed to start Barometer BME280!");
-    while (1);
-  }
 }
 
 void setup_voc_ccs811() {
@@ -148,9 +127,6 @@ void setup_wifi() {
 
 void loop() {
   MQTT_connect();
-
-  //lese_baro_temp();
-  //lese_baro_humi();
 
   float temp = lese_dht22_temp();
   float humi = lese_dht22_humi();
@@ -238,23 +214,6 @@ void lese_voc_temp()
   Serial.println("Temp: " + String(temp) + " °C");
   publish_mqtt(pub_voc_temp, temp);
 }
-
-void lese_baro_temp()
-{
-  float temp = bme.readTemperature();
-  
-  Serial.println(" BME   Temp: " + String(temp) + " °C");
-  publish_mqtt(pub_baro_temp, temp);
-}
-
-void lese_baro_humi()
-{
-  float humi = bme.readHumidity();
-  
-  Serial.println(" BME   Humi:" + String(humi) + " %");
-  publish_mqtt(pub_baro_humi, humi);
-}
-
 
 float lese_dht22_temp()
 {
