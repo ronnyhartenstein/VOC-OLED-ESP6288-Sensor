@@ -9,12 +9,12 @@
 
 #include <Adafruit_CCS811.h>
 
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BME280.h>
-
 #include <DHT.h>
 
 #include "Secrets.h"
+
+#define I2C_SDA D4
+#define I2C_SCL D3
 
 
 // --------- VOC Sensor CCS811
@@ -25,6 +25,7 @@ Adafruit_CCS811 ccs;
 
 #define DHT22PIN D7
 #define DHT22TYPE DHT22
+
 DHT dht22(DHT22PIN, DHT22TYPE);
 
 
@@ -63,6 +64,7 @@ Adafruit_MQTT_Publish pub_voc_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "ard
 Adafruit_MQTT_Publish pub_baro_temp = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/baro/temp");
 Adafruit_MQTT_Publish pub_baro_humi = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "arduino/baro/humi");
 
+bool wlan_aktiv = false;
 
 // ---------- SETUP --------
 
@@ -107,26 +109,37 @@ void setup_temp_dht22() {
   Serial.println("Starte DHD22");
   dht22.begin();
 }
+
 void setup_wifi() {
-  Serial.print("Verbinde mit WiFi SSID ");
-  Serial.println(WLAN_SSID);
+  Serial.println("Verbinde mit WiFi SSID " + String(WLAN_SSID));
   
   WiFi.mode(WIFI_STA);
   WiFi.begin(WLAN_SSID, WLAN_PASSWORD);
 
+  int versuch = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+    if (versuch == 10) {
+      Serial.println(F("WLAN Verbindung fehlgeschlagen, dann eben ohne MQTT Publish"));
+      break;
+    }
+    versuch++;
   }
 
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  if (WiFi.status() == WL_CONNECTED) {
+    wlan_aktiv = true;
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
 }
 
 // --------- LOOP ---------
 
 void loop() {
-  MQTT_connect();
+  if (wlan_aktiv) {
+    MQTT_connect();
+  }
 
   float temp = lese_dht22_temp();
   float humi = lese_dht22_humi();
@@ -146,7 +159,7 @@ void loop() {
 
   lese_voc_co2();
   lese_voc_tvoc();
-  lese_voc_temp();
+  //lese_voc_temp();
 
   display_rendern();
 
@@ -200,7 +213,7 @@ void lese_voc_tvoc()
   float TVOC = ccs.getTVOC();
   TVOC_curr = abs(TVOC);
   
-  Serial.print(" ppm, TVOC: " + String(TVOC_curr)  + " ppb");
+  Serial.println("TVOC: " + String(TVOC_curr)  + " ppb");
   publish_mqtt(pub_voc_tvoc, TVOC);
 }
 
@@ -219,7 +232,7 @@ float lese_dht22_temp()
 {
   float temp = dht22.readTemperature();
   
-  Serial.println(" DHT22   Temp: " + String(temp) + " °C");
+  Serial.println("DHT22 Temp: " + String(temp) + " °C");
   publish_mqtt(pub_baro_temp, temp);
 
   return temp;
@@ -229,7 +242,7 @@ float lese_dht22_humi()
 {
   float humi = dht22.readHumidity();
   
-  Serial.println(" DHT22   Humi:" + String(humi) + " %");
+  Serial.println("DHT22 Humi:" + String(humi) + " %");
   publish_mqtt(pub_baro_humi, humi);
   
   return humi;
@@ -237,6 +250,9 @@ float lese_dht22_humi()
 
 void publish_mqtt(Adafruit_MQTT_Publish pub, float val) 
 {
+  if (!wlan_aktiv) {
+    return;
+  }
   //Serial.print(F("\nPublish "));
   //Serial.print("...");
   if (! pub.publish(val)) {
