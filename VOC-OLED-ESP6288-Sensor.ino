@@ -177,21 +177,21 @@ void loop() {
 
   x_erhoehen();
 
-  // erste Minute alle 0,5 Sek messen
-  if (loop_nr < 120) {
+  // ersten 10 Sek. alle 1 Sek messen
+  if (loop_nr < 10) {
     delay(1000);
   }
-  // zweite Minute alle 10 Sek messen
-  else if (loop_nr < 120 + 6) {
-    if (loop_nr == 120) {
+  // nächste 50 Sek. alle 10 Sek messen
+  else if (loop_nr < 10 + 5) {
+    if (loop_nr == 10) {
       Serial.println("--> CSS Mode: alle 10 Sek");
       ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
     }
     delay(10000);
   }
-  // dann alle 30 Sek
+  // dann alle 60 Sek
   else {
-    if (loop_nr == 126) {
+    if (loop_nr == 15) {
       Serial.println("--> CSS Mode: alle 60 Sek");
       ccs.setDriveMode(CCS811_DRIVE_MODE_60SEC);
     }
