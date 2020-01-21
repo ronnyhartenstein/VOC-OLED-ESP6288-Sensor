@@ -12,6 +12,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
+#include <DHT.h>
+
 #include "Secrets.h"
 
 
@@ -28,6 +30,12 @@ Adafruit_CCS811 ccs;
 
 TwoWire I2CBME = TwoWire();
 Adafruit_BME280 bme;
+
+// --------- Temperatur/Luftfeuchte DHD22
+
+#define DHT22PIN D7
+#define DHT22TYPE DHT22
+DHT dht22(DHT22PIN, DHT22TYPE);
 
 
 // --------- OLED Display SH1106
@@ -70,12 +78,18 @@ Adafruit_MQTT_Publish pub_baro_humi = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "ar
 
 void setup() {
   Serial.begin(115200);
-  delay(10);
+  delay(100);
 
   setup_voc_ccs811();
+  delay(100);
   //setup_baro_bme280();
+  delay(100);
+  setup_temp_dht22();
+  delay(100);
   setup_display_sh1106();
+  delay(100);
   setup_wifi();
+  delay(100);
 }
 
 void setup_baro_bme280() {
@@ -110,6 +124,10 @@ void setup_display_sh1106() {
   Wire.setClockStretchLimit(500);
 }
 
+void setup_temp_dht22() {
+  Serial.println("Starte DHD22");
+  dht22.begin();
+}
 void setup_wifi() {
   Serial.print("Verbinde mit WiFi SSID ");
   Serial.println(WLAN_SSID);
@@ -133,13 +151,18 @@ void loop() {
 
   //lese_baro_temp();
   //lese_baro_humi();
-    
+
+  float temp = lese_dht22_temp();
+  float humi = lese_dht22_humi();
+
   if (!ccs.available()) {
     Serial.println("Auf VOC warten (loop)");
     delay(500);
     return;
   }
 
+  Serial.println("CCS811: Setze Korrekturwerte: " + String(humi) + " / " + String(temp));
+  ccs.setEnvironmentalData(humi, temp);
   if (!!ccs.readData()) {
     Serial.println("FEHLER!");
     while (1);
@@ -181,8 +204,10 @@ void lese_voc_co2()
   Serial.println("eCO2: " + String(eCO2_curr) + " ppm");
   publish_mqtt(pub_voc_eco2, eCO2_curr);
 
+#define ECO2_MIN 400
+#define ECO2_MAX 5000
   int y_delta = abs(eCO2) - 400;
-  float y_float = (float) y_delta / 600.0;
+  float y_float = (float) y_delta / (ECO2_MAX - ECO2_MIN);
   int y_curr = abs(y_float * (DISPLAY_HOEHE - 1));
   if (y_curr > (DISPLAY_HOEHE - 1)) {
     y_curr = DISPLAY_HOEHE - 1;
@@ -230,14 +255,35 @@ void lese_baro_humi()
   publish_mqtt(pub_baro_humi, humi);
 }
 
+
+float lese_dht22_temp()
+{
+  float temp = dht22.readTemperature();
+  
+  Serial.println(" DHT22   Temp: " + String(temp) + " °C");
+  publish_mqtt(pub_baro_temp, temp);
+
+  return temp;
+}
+
+float lese_dht22_humi()
+{
+  float humi = dht22.readHumidity();
+  
+  Serial.println(" DHT22   Humi:" + String(humi) + " %");
+  publish_mqtt(pub_baro_humi, humi);
+  
+  return humi;
+}
+
 void publish_mqtt(Adafruit_MQTT_Publish pub, float val) 
 {
-  Serial.print(F("\nPublish "));
-  Serial.print("...");
+  //Serial.print(F("\nPublish "));
+  //Serial.print("...");
   if (! pub.publish(val)) {
-    Serial.println(F("Failed"));
+    Serial.println(F("MQTT Publish Failed"));
   } else {
-    Serial.println(F("OK!"));
+    //Serial.println(F("OK!"));
   }
 }
 
