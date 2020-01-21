@@ -179,7 +179,7 @@ void loop() {
 
   // ersten 10 Sek. alle 1 Sek messen
   if (loop_nr < 10) {
-    delay(1000);
+    delay(1100);
   }
   // nächste 50 Sek. alle 10 Sek messen
   else if (loop_nr < 10 + 5) {
@@ -187,7 +187,7 @@ void loop() {
       Serial.println("--> CSS Mode: alle 10 Sek");
       ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
     }
-    delay(10000);
+    delay(11000);
   }
   // dann alle 60 Sek
   else {
@@ -195,8 +195,9 @@ void loop() {
       Serial.println("--> CSS Mode: alle 60 Sek");
       ccs.setDriveMode(CCS811_DRIVE_MODE_60SEC);
     }
-    delay(60000);
+    delay(61000);
   }
+  // alle delays sind ein bisschen länger als der Loop -> https://github.com/adafruit/Adafruit_CCS811/issues/4#issuecomment-368252075
   loop_nr++;
 }
 
@@ -209,9 +210,14 @@ void lese_voc_co2()
 {
   float eCO2 = ccs.geteCO2();
   eCO2_curr = abs(eCO2);
-
+  if (eCO2_curr == 0) { 
+    Serial.println(F("eCO2: 0 -> verwerfen"));
+    return;
+  }
   Serial.println("eCO2: " + String(eCO2_curr) + " ppm");
-  publish_mqtt(pub_voc_eco2, eCO2_curr);
+  if (eCO2_curr > 400) {
+    publish_mqtt(pub_voc_eco2, eCO2_curr);
+  }
 
   int y_delta = abs(eCO2) - 400;
   float y_float = (float) y_delta / (ECO2_MAX - ECO2_MIN);
@@ -230,6 +236,10 @@ void lese_voc_tvoc()
 {
   float TVOC = ccs.getTVOC();
   TVOC_curr = abs(TVOC);
+  if (TVOC_curr == 0) { 
+    Serial.println(F("TVOC: 0 -> verwerfen"));
+    return;
+  }
 
   Serial.println("TVOC: " + String(TVOC_curr)  + " ppb");
   publish_mqtt(pub_voc_tvoc, TVOC);
