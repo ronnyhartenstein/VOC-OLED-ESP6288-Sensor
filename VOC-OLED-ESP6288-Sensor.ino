@@ -79,6 +79,7 @@ void setup() {
 }
 
 void setup_baro_bme280() {
+  Serial.println("Starte Barometer");
   I2CBME.begin(I2C_SDA, I2C_SCL, 100000);
   if (!bme.begin(0x76, &I2CBME)) {
     Serial.println("Failed to start Barometer BME280!");
@@ -129,8 +130,12 @@ void setup_wifi() {
 
 void loop() {
   MQTT_connect();
-  
+
+  //lese_baro_temp();
+  //lese_baro_humi();
+    
   if (!ccs.available()) {
+    Serial.println("Auf VOC warten (loop)");
     delay(500);
     return;
   }
@@ -140,9 +145,6 @@ void loop() {
     while (1);
   }
 
-  //lese_baro_temp();
-  //lese_baro_humi();
-  
   lese_voc_co2();
   lese_voc_tvoc();
   lese_voc_temp();
