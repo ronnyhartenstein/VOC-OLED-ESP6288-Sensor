@@ -34,7 +34,7 @@ DHT dht22(DHT22PIN, DHT22TYPE);
 const int DISPLAY_BREITE = 128;
 const int DISPLAY_HOEHE = 64;
 
-                  // SDA, SCL, Reset PIN, I2C addr, width, height, isSH1106)
+// SDA, SCL, Reset PIN, I2C addr, width, height, isSH1106)
 OLED display = OLED(I2C_SDA, I2C_SCL, NO_RESET_PIN, 0x3C, DISPLAY_BREITE, DISPLAY_HOEHE, true);
 
 // --------- Display Render Steuerung
@@ -50,6 +50,9 @@ int eCO2_curr = 0;
 int TVOC_curr = 0;
 
 int loop_nr = 0;
+
+#define ECO2_MIN 400
+#define ECO2_MAX 5000
 
 // -------- MQTT -------
 
@@ -96,6 +99,10 @@ void setup_voc_ccs811() {
   Serial.println("Temperatur prüfen");
   float temp = ccs.calculateTemperature();
   ccs.setTempOffset(temp - 25.0);
+
+  // am Anfang alle Sek.
+  Serial.println("--> CSS Mode: 1 Sek");
+  ccs.setDriveMode(CCS811_DRIVE_MODE_1SEC);
 }
 
 void setup_display_sh1106() {
@@ -112,7 +119,7 @@ void setup_temp_dht22() {
 
 void setup_wifi() {
   Serial.println("Verbinde mit WiFi SSID " + String(WLAN_SSID));
-  
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WLAN_SSID, WLAN_PASSWORD);
 
@@ -144,10 +151,15 @@ void loop() {
   float temp = lese_dht22_temp();
   float humi = lese_dht22_humi();
 
-  if (!ccs.available()) {
-    Serial.println("Auf VOC warten (loop)");
+  int ccs_warte_zyklen = 10;
+  while (!ccs.available()) {
+    Serial.println("Auf VOC warten (loop) .. ");
     delay(500);
-    return;
+    if (ccs_warte_zyklen > 0) {
+      ccs_warte_zyklen--;
+    } else {
+      return;
+    }
   }
 
   Serial.println("CCS811: Setze Korrekturwerte: " + String(humi) + " / " + String(temp));
@@ -167,15 +179,23 @@ void loop() {
 
   // erste Minute alle 0,5 Sek messen
   if (loop_nr < 120) {
-    delay(500);
-  } 
+    delay(1000);
+  }
   // zweite Minute alle 10 Sek messen
   else if (loop_nr < 120 + 6) {
+    if (loop_nr == 120) {
+      Serial.println("--> CSS Mode: alle 10 Sek");
+      ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
+    }
     delay(10000);
   }
   // dann alle 30 Sek
   else {
-    delay(30000);
+    if (loop_nr == 126) {
+      Serial.println("--> CSS Mode: alle 60 Sek");
+      ccs.setDriveMode(CCS811_DRIVE_MODE_60SEC);
+    }
+    delay(60000);
   }
   loop_nr++;
 }
@@ -193,8 +213,6 @@ void lese_voc_co2()
   Serial.println("eCO2: " + String(eCO2_curr) + " ppm");
   publish_mqtt(pub_voc_eco2, eCO2_curr);
 
-#define ECO2_MIN 400
-#define ECO2_MAX 5000
   int y_delta = abs(eCO2) - 400;
   float y_float = (float) y_delta / (ECO2_MAX - ECO2_MIN);
   int y_curr = abs(y_float * (DISPLAY_HOEHE - 1));
@@ -212,7 +230,7 @@ void lese_voc_tvoc()
 {
   float TVOC = ccs.getTVOC();
   TVOC_curr = abs(TVOC);
-  
+
   Serial.println("TVOC: " + String(TVOC_curr)  + " ppb");
   publish_mqtt(pub_voc_tvoc, TVOC);
 }
@@ -223,7 +241,7 @@ void lese_voc_tvoc()
 void lese_voc_temp()
 {
   float temp = ccs.calculateTemperature();
-  
+
   Serial.println("Temp: " + String(temp) + " °C");
   publish_mqtt(pub_voc_temp, temp);
 }
@@ -231,7 +249,7 @@ void lese_voc_temp()
 float lese_dht22_temp()
 {
   float temp = dht22.readTemperature();
-  
+
   Serial.println("DHT22 Temp: " + String(temp) + " °C");
   publish_mqtt(pub_baro_temp, temp);
 
@@ -241,14 +259,14 @@ float lese_dht22_temp()
 float lese_dht22_humi()
 {
   float humi = dht22.readHumidity();
-  
+
   Serial.println("DHT22 Humi:" + String(humi) + " %");
   publish_mqtt(pub_baro_humi, humi);
-  
+
   return humi;
 }
 
-void publish_mqtt(Adafruit_MQTT_Publish pub, float val) 
+void publish_mqtt(Adafruit_MQTT_Publish pub, float val)
 {
   if (!wlan_aktiv) {
     return;
@@ -307,15 +325,15 @@ void MQTT_connect() {
 
   uint8_t retries = 3;
   while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       Serial.println(mqtt.connectErrorString(ret));
-       Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
-       delay(5000);
-       retries--;
-       if (retries == 0) {
-         // basically die and wait for WDT to reset me
-         while (1);
-       }
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);
+    retries--;
+    if (retries == 0) {
+      // basically die and wait for WDT to reset me
+      while (1);
+    }
   }
   Serial.println("MQTT Connected!");
 }
