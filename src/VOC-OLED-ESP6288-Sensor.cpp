@@ -69,6 +69,23 @@ Adafruit_MQTT_Publish pub_baro_humi = Adafruit_MQTT_Publish(&mqtt, MQTT_USER "ar
 
 bool wlan_aktiv = false;
 
+// ---------- Funktionen anmelden
+
+void setup_voc_ccs811();
+void setup_temp_dht22();
+void setup_display_sh1106();
+void setup_wifi();
+
+void lese_voc_co2();
+void lese_voc_tvoc();
+void lese_voc_temp();
+float lese_dht22_temp();
+float lese_dht22_humi();
+void publish_mqtt(Adafruit_MQTT_Publish pub, float val);
+void x_erhoehen();
+void display_rendern();
+void MQTT_connect();
+
 // ---------- SETUP --------
 
 void setup() {
