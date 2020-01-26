@@ -49,6 +49,9 @@ float y_float = 0.0;
 int eCO2_curr = 0;
 int TVOC_curr = 0;
 
+float temp_curr = 0.0;
+float humi_curr = 0.0;
+
 int loop_nr = 0;
 
 #define ECO2_MIN 400
@@ -165,8 +168,8 @@ void loop() {
     MQTT_connect();
   }
 
-  float temp = lese_dht22_temp();
-  float humi = lese_dht22_humi();
+  temp_curr = lese_dht22_temp();
+  humi_curr = lese_dht22_humi();
 
   int ccs_warte_zyklen = 10;
   while (!ccs.available()) {
@@ -179,8 +182,8 @@ void loop() {
     }
   }
 
-  Serial.println("CCS811: Setze Korrekturwerte: " + String(humi) + " / " + String(temp));
-  ccs.setEnvironmentalData(humi, temp);
+  Serial.println("CCS811: Setze Korrekturwerte: " + String(humi_curr) + " / " + String(temp_curr));
+  ccs.setEnvironmentalData(humi_curr, temp_curr);
   if (!!ccs.readData()) {
     Serial.println("FEHLER!");
     while (1);
@@ -335,6 +338,11 @@ void display_rendern()
   // Werte ausschreiben
   display.setCursor(1, 1);
   display.print("CO2: " + (String) eCO2_curr + " ppm");
+
+  display.setCursor(1, 14);
+  char data[20];
+  sprintf(data, "%.1f°C/%.1f%%", temp_curr, humi_curr);
+  display.print(data);
 
   display.display();
 
